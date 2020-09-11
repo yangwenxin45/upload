@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>断点上传</title>
+    <link rel="shortcut icon" href="#">
+
+    <script type="text/javascript" src="plugin/jquery-3.5.1/jquery.min.js"></script>
+    <!-- bootstrap -->
+    <link rel="stylesheet" type="text/css" href="plugin/bootstrap-3.3.7/css/bootstrap.min.css" />
+    <script type="text/javascript" src="plugin/bootstrap-3.3.7/js/bootstrap.min.js"></script>
+    <link rel="stylesheet" type="text/css" href="plugin/webuploader-0.1.5/webuploader.css">
+    <script type="text/javascript" src="plugin/webuploader-0.1.5/webuploader.min.js"></script>
+
+</head>
+<body>
+<div id="uploader" class="wu-example">
+    <!--用来存放文件信息-->
+    <div id="thelist" class="uploader-list"></div>
+    <div class="btns">
+        <div id="picker">选择大文件</div>
+        <button id="ctlBtn" class="btn btn-default">开始上传</button>
+    </div>
+</div>
+
+<script>
+    var $btn = $('#ctlBtn');
+    var $thelist = $('#thelist');
+    var chunkSize = 8 * 1024 * 1024;
+
+    WebUploader.Uploader.register({
+        'before-send-file': 'preupload',
+        'before-send': 'checkchunk'
+    }, {
+        preupload: function (file) {
+            var deferred = $.Deferred();
+            uploader.md5File(file.source)
+                .fail(function () {
+                    deferred.reject();
+                })
+                .then(function(md5) {
+                    $.ajax({
+                        url: 'index/checkFileMd5',
+                        method: 'post',
+                        data: {
+                            md5: md5
+                        },
+                        dataType: 'json',
+                        success: function(data) {
+                            var status = data.status.value;
+                            if (status == 101) {
+
+                            } else if (status == 100) {
+                                uploader.skipFile(file);
+                            } else if (status == 102) {
+                                file.missChunks = data.data;
+                            }
+                            deferred.resolve();
+                        }
+                    });
+                });
+            return deferred.promise();
+        },
+        checkchunk: function(block) {
+            var deferred = $.Deferred();
+            var file = block.file;
+            var missChunks = file.missChunks;
+            var blockChunk = block.chunk;
+            console.log("当前分块：" + blockChunk);
+            console.log("缺失分块:" + missChunks);
+            if (missChunks !== null && missChunks !== undefined && missChunks !== '') {
+                var flag = true;
+                for (var i=0; i<missChunks.length; i++) {
+                    if (blockChunk == missChunks[i]) {
+                        console.log(file.name + ":" + blockChunk + ":还没上传");
+                        flag = false;
+                        break;
+                    }
+                }
+                if (flag) {
+                    deferred.reject();
+                } else {
+                    deferred.resolve();
+                }
+            } else {
+                deferred.resolve();
+            }
+            return deferred.promise();
+        }
+    });
+
+    // 实例化
+    var uploader = WebUploader.create({
+        swf: 'plugin/webuploader-0.1.5/Uploader.swf',
+        server: 'index/fileUpload',
+        disableGlobalDnd: true,
+        pick: {
+            id: '#picker',
+            label: '选择文件'
+        },
+        auto: false,
+        chunked: true,
+        chunkSize: chunkSize, // 一个分片大小8M
+        chunkRetry: 2,
+        threads: 3,
+        formData: { // 全局设置请求参数
+            chunkSize: chunkSize
+        },
+        // 禁掉全局的拖拽功能。这样不会出现图片拖进页面的时候，把图片打开。
+        fileSizeLimit: 10 * 1024 * 1024 * 1024,    // 总上传文件大小10G
+        fileSingleSizeLimit: 10 * 1024 * 1024 * 1024    // 单个文件大小10G
+    });
+
+    // 当有文件被添加进队列的时候
+    uploader.on('fileQueued', function (file) {
+        console.log(file.name + "进入队列");
+        $thelist.append('<div id="' + file.id + '" class="item">' +
+            '<h4 class="info">' + file.name + '</h4>' +
+            '<p class="state">等待上传...</p>' +
+            '</div>');
+    });
+
+    // 局部设置请求参数
+    uploader.on('uploadBeforeSend', function (block, data) {
+        var file = block.file;
+        data.md5 = file.md5 || '';
+    });
+
+    // 上传进度实时显示
+    uploader.on('uploadProgress', function (file, percentage) {
+        var $li = $('#' + file.id),
+            $percent = $li.find('.progress .progress-bar');
+        // 避免重复创建
+        if ( !$percent.length ) {
+            $percent = $('<div class="progress progress-striped active">' +
+                '<div class="progress-bar" role="progressbar" style="width: 0%">' +
+                '</div>' +
+                '</div>').appendTo( $li ).find('.progress-bar');
+        }
+        $li.find('p.state').text('上传中');
+        var progressPercentage = percentage * 100 + '%';
+        $percent.css('width', progressPercentage);
+        $percent.html(progressPercentage);
+    });
+
+    // 上传成功
+    uploader.on('uploadSuccess', function (file) {
+        $('#' + file.id).find('p.state').text("已上传");
+        $('#' + file.id).find(".progress").find(".progress-bar").attr("class", "progress-bar progress-bar-success");
+    });
+
+    // 上传出错
+    uploader.on('uploadError', function (file) {
+        $('#' + file.id).find('p.state').text('上传出错');
+        $('#' + file.id).find(".progress").find(".progress-bar").attr("class", "progress-bar progress-bar-danger");
+    });
+
+    // 上传成功或失败
+    uploader.on('uploadComplete', function (file) {
+
+    });
+
+    // 文件上传
+    $btn.on('click', function () {
+        uploader.upload();
+    });
+</script>
+</body>
+</html>
