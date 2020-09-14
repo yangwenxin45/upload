@@ -34,11 +34,12 @@
     }, {
         preupload: function (file) {
             var deferred = $.Deferred();
-            uploader.md5File(file.source)
+            uploader.md5File(file)
                 .fail(function () {
                     deferred.reject();
                 })
                 .then(function(md5) {
+                    file.md5 = md5;
                     $.ajax({
                         url: 'index/checkFileMd5',
                         method: 'post',
@@ -46,7 +47,7 @@
                             md5: md5
                         },
                         dataType: 'json',
-                        success: function(data) {
+                        success: function (data) {
                             var status = data.status.value;
                             if (status == 101) {
 
@@ -157,6 +158,11 @@
 
     // 上传成功或失败
     uploader.on('uploadComplete', function (file) {
+
+    });
+
+    // 判断文件是否上传成功
+    uploader.on('uploadAccept', function (file, response) {
 
     });
 
